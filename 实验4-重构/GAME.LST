@@ -1,0 +1,238 @@
+C51 COMPILER V9.60.0.0   GAME                                                              09/07/2020 16:41:15 PAGE 1   
+
+
+C51 COMPILER V9.60.0.0, COMPILATION OF MODULE GAME
+OBJECT MODULE PLACED IN GAME.OBJ
+COMPILER INVOKED BY: E:\Keil\C51\BIN\C51.EXE GAME.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND TABS(2)
+
+line level    source
+
+   1          /*
+   2          该工程对STC开发板上一下资源进行了封装，实现了用户层和驱动层的分离
+   3          
+   4          下载至湖南大学STC开发板，会有如下的效果：
+   5          
+   6          
+   7          */
+   8          #include "STC15F2K60S2.H"
+   9          #include "LED_segment.h"
+  10          #include "KEY.h"
+  11          #include "Beep.h"
+  12          #define uchar unsigned char 
+  13          #define uint unsigned int 
+  14          bit flag_500us=0;
+  15          bit flag_1ms=0;
+  16          bit flag_10ms=0;
+  17          bit flag_100ms=0;
+  18          bit flag_1s=0;
+  19          uchar count_500us=0;
+  20          uchar count_1ms=0;
+  21          uchar count_10ms=0;
+  22          uchar count_100ms=0;
+  23          uchar count_1s=0;
+  24          uchar WATER=0x01;
+  25          uchar number=0;
+  26          uchar player1=0,player2=0;
+  27          uchar RL_TH0=(65536-1000)/256;
+  28          uchar RL_TL0=(65536-1000)%256;
+  29          char win=0;
+  30          char Dis[8];
+  31          uchar win_pos=0;
+  32          uchar win_begin=0;
+  33          uchar win_end=3;
+  34          uchar win_count=0;
+  35          uint rand;
+  36          void win_display(){
+  37   1        P0=0;
+  38   1        P23=0;
+  39   1        if(win_pos==8)win_pos=0;
+  40   1        P2=win_pos;
+  41   1        if(win_pos>=win_begin && win_pos<=win_end){
+  42   2          //win_begin和win_end是胜者得分所在的数码管
+  43   2          //win_begin和win_end在游戏结束时被设置
+  44   2          win_count++;
+  45   2          if(win_count<=100){//闪烁显示胜者信息
+  46   3            P0=Dis[win_pos]==0x7f?0x40:LED_Data[Dis[win_pos]];
+  47   3          }
+  48   2          else 
+  49   2            P0=0;
+  50   2          if(win_count>=200) win_count=0;
+  51   2        }
+  52   1        else{
+  53   2          P0=Dis[win_pos]==0x7f?0x40:LED_Data[Dis[win_pos]];
+  54   2        }
+  55   1        win_pos++;
+C51 COMPILER V9.60.0.0   GAME                                                              09/07/2020 16:41:15 PAGE 2   
+
+  56   1      }
+  57          
+  58          void get_number(){//更新数码管的显示
+  59   1        Dis[0]=player2/100;
+  60   1        Dis[1]=(player2/10)%10;
+  61   1        Dis[2]=player2%10;
+  62   1        Dis[3]=0x7f;
+  63   1        Dis[4]=0x7f;
+  64   1        Dis[5]=player1/100;
+  65   1        Dis[6]=(player1/10)%10;
+  66   1        Dis[7]=player1%10;
+  67   1      }
+  68          void GPIO_Init(void)                                                            //硬件初始化/BootLoad/BIOS
+  69          {   P0M1=0x00;            //设置P0为推挽模式，点亮数码管
+  70   1        P0M0=0xff;
+  71   1        P2M1=0x00;
+  72   1        P2M0=0x08;            //将P2^3设置为推挽模式，其余为准双向口模式
+  73   1      }
+  74          void Timer0_Init(void)    //1mS@12.000MHz
+  75          { AUXR &= 0x7f;     
+  76   1        TMOD &= 0xf0;     //使用定时器0，16位重装载模式
+  77   1        TH0=(65535-500)/256; //高8位赋初值
+  78   1        TL0=(65535-500)%256; //低8位赋初值
+  79   1        TR0=1;          //启动定时器1 
+  80   1        ET0=1;                //开启定时器0中断
+  81   1      }
+  82          
+  83          void timer0() interrupt 1
+  84          {
+  85   1        flag_500us=1;
+  86   1      
+  87   1      }
+  88          void Func_500us(){
+  89   1        flag_500us=0;
+  90   1        count_500us++;
+  91   1        if(count_500us==2){
+  92   2          flag_1ms=1;
+  93   2          count_500us=0;
+  94   2        }
+  95   1        Voice();//蜂鸣器驱动
+  96   1      }
+  97          void Func_1ms(){
+  98   1        flag_1ms=0;
+  99   1        count_1ms++;               
+ 100   1        if( count_1ms == 10 )   {
+ 101   2          flag_10ms = 1; 
+ 102   2          count_1ms = 0;  
+ 103   2        }
+ 104   1        if(win)
+ 105   1          win_display();
+ 106   1        Display();
+ 107   1        count_key();//按键驱动
+ 108   1      }
+ 109          void Func_10ms(){
+ 110   1        flag_10ms=0;
+ 111   1        count_10ms++; 
+ 112   1        if( count_10ms == 10 )  {
+ 113   2          flag_100ms = 1; 
+ 114   2          count_10ms = 0;  
+ 115   2        } 
+ 116   1      }
+ 117          void Func_100ms(){
+C51 COMPILER V9.60.0.0   GAME                                                              09/07/2020 16:41:15 PAGE 3   
+
+ 118   1        flag_100ms=0;
+ 119   1        count_100ms++;
+ 120   1        if(count_100ms==10) {count_100ms=0;flag_1s=1;}
+ 121   1      }
+ 122          void Func_1s(){
+ 123   1        flag_1s=0;
+ 124   1        count_1s++; 
+ 125   1      }
+ 126          void game_rule(uchar num);
+ 127          void main(){
+ 128   1        GPIO_Init();
+ 129   1        Timer0_Init();
+ 130   1        EA=1;
+ 131   1        set_pose(0,7);                    //让0~7位数码管亮
+ 132   1        Light_ON();                       //打开流水灯
+ 133   1        print_LED(0,0,0,0x7f,0x7f,0,0,0); //全部显示0
+ 134   1        set_LED_char(3,0x40);             //3号位置显示横杠
+ 135   1        set_LED_char(4,0x40);              //4号位置显示横杠
+ 136   1        print_Light(WATER);               //流水灯显示0x01
+ 137   1        segment_ON();                     //开启数码管
+*** WARNING C206 IN LINE 137 OF GAME.c: 'segment_ON': missing function-prototype
+ 138   1        count_1s=0;
+ 139   1        WATER=0x01;
+ 140   1        while(1){
+ 141   2          if(WATER==0xff) break; 
+ 142   2          if(flag_500us  ==1) {Func_500us();}
+ 143   2          if(flag_1ms  ==1) {Func_1ms();   }
+ 144   2          if(flag_10ms ==1) {Func_10ms(); }
+ 145   2          if(flag_100ms==1) {Func_100ms();print_Light(WATER);WATER=(WATER<<1)|WATER;}
+ 146   2          if(flag_1s   ==1) {Func_1s();}
+ 147   2          
+ 148   2        }
+ 149   1        print_Light(0);//流水灯初始化
+ 150   1        key_init();//按键初始化
+ 151   1        key_enable(1);//使能key1
+ 152   1        key_enable(2);//使能key2
+ 153   1        key_enable(3);//使能key2
+ 154   1        set_Beep(1500,1);//蜂鸣器1500hz，响1s
+ 155   1        Beep_ON();//开启蜂鸣器，立刻开始响
+ 156   1        count_1s=0;//时间计时
+ 157   1        WATER=0x01;//流水灯，流水灯开关在上一个模式已经开启
+ 158   1        segment_ON();//开启数码管
+ 159   1        print_Light(WATER);//流水灯显示
+ 160   1        WATER<<=1;
+ 161   1        
+ 162   1        
+ 163   1        while(1){
+ 164   2          if(flag_500us  ==1){Func_500us();}
+ 165   2          if(flag_1ms  ==1) {Func_1ms();   }
+ 166   2          if(flag_10ms ==1) {Func_10ms();   }
+ 167   2          if(flag_100ms==1) {Func_100ms(); }
+ 168   2          if(flag_1s   ==1) {Func_1s();print_Light(WATER);WATER<<=1;}
+ 169   2            //每1s，流水灯左移一位
+ 170   2          number=key_push();//获取按键信息
+ 171   2          if(number){game_rule(number);}
+ 172   2          //按键被按下，对应选手比分+1
+ 173   2          if(count_1s==8) break;//8s，比赛结束
+ 174   2        }
+ 175   1        segment_OFF();
+*** WARNING C206 IN LINE 175 OF GAME.c: 'segment_OFF': missing function-prototype
+ 176   1        Light_OFF();
+ 177   1        while(1){
+C51 COMPILER V9.60.0.0   GAME                                                              09/07/2020 16:41:15 PAGE 4   
+
+ 178   2          win=1;
+ 179   2          if(flag_500us  ==1){Func_500us();}
+ 180   2          if(flag_1ms  ==1) {Func_1ms();   }
+ 181   2          if(flag_10ms ==1) {Func_10ms();  }
+ 182   2          if(flag_100ms==1) {Func_100ms(); }
+ 183   2          if(flag_1s   ==1) {Func_1s();print_Light(WATER);WATER<<=1;}
+ 184   2          if(player1<player2){
+ 185   3            win_begin=0;
+ 186   3            win_end=2;
+ 187   3          }
+ 188   2          else if(player1>player2){
+ 189   3            win_begin=5;
+ 190   3            win_end=7;
+ 191   3          }
+ 192   2          else{
+ 193   3            win_begin=0;
+ 194   3            win_end=7;
+ 195   3          }
+ 196   2        }
+ 197   1      }
+ 198          void game_rule(uchar num){
+ 199   1      
+ 200   1        switch (num){
+ 201   2          case 1:player1++;break;
+ 202   2          case 3:player2++;break;
+ 203   2        }
+ 204   1        get_number();
+ 205   1        print_LED(Dis[0],Dis[1],Dis[2],0x7f,0x7f,Dis[5],Dis[6],Dis[7]);
+ 206   1      }
+ 207          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1416    ----
+   CONSTANT SIZE    =     12    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     93       8
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      6    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  2 WARNING(S),  0 ERROR(S)
